@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SpekSweeper
+Comment=Spektrum-Wasserfall mit RTL-SDR-Stick
+Exec=@DIR@/speksweeper-launch
+Icon=network-wireless-signal-excellent-symbolic
+Terminal=false
+Categories=Utility;HamRadio;
+X-Purism-FormFactor=Workstation;Mobile;
