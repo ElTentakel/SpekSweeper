@@ -42,6 +42,8 @@ def pump(dur):
             k, d = ev.pop(0)
             if k == "sweep_start":
                 hist.start(d["id"], d["t"], d["f_lo"], d["bin_w"], d["n"])
+            elif k == "tune":
+                view.set_current_hop(*d)
             elif k == "hop":
                 hist.add_hop(*d)
             elif k == "sweep_end":
@@ -93,4 +95,15 @@ for f_tap in (430e6, 512e6):                 # tap next to ISM 433 / next to a D
     shot(f"marker_{f_tap / 1e6:.0f}", 360, 650)
 view.lo, view.hi = 600e6, 700e6          # marker outside → must not appear
 shot("marker_hidden", 360, 650)
+# difference mode: reference = current sweep, the following sweeps show differences
+view.lo, view.hi = 440e6, 720e6
+view.marker = None
+view.toggle_diff()
+pump(secs)
+view._dirty = True
+wf, _ = view.layout()
+x = wf[0] + (522e6 - view.lo) / (view.hi - view.lo) * wf[2]
+view._tap(x, wf[1] + 40)
+shot("diff", 360, 650)
+shot("diff_rot270", 360, 650, 270)
 sw.stop()

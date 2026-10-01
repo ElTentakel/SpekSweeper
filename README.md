@@ -19,7 +19,12 @@ when was it active? There is no number entry – just panning, zooming and tappi
 - **Derived data**: whatever a sweep did not measure (because the view was panned/zoomed before,
   or the sweep is still running) is taken from the temporally nearest measurement of the same
   frequency and shown **slightly greyed out**.
-- **Marker** by tapping: frequency, level (dBFS) and time.
+- **Live indicator**: a dark green box in the spectrum strip marks the frequency range that is
+  being measured right now.
+- **Difference mode** (Δ button): the current sweep becomes the reference; from the next sweep on,
+  the waterfall and spectrum show only the change against it (blue = weaker, dark = unchanged,
+  yellow/red = stronger). Sweeps from before keep their normal display.
+- **Marker** by tapping: frequency, level (dBFS) and time – in difference mode also the difference.
 - **Portrait and landscape**, plus a rotate button (0°/90°/270°) for when the system does not
   rotate automatically.
 - Automatic colour scale, selectable gain (AGC or a fixed step), pause.
@@ -31,11 +36,13 @@ when was it active? There is no number entry – just panning, zooming and tappi
 |---|---|
 | Drag horizontally | Pan the frequency range |
 | Pinch with two fingers | Frequency zoom around the centre of the fingers |
-| Zoom buttons bottom right / mouse wheel | Zoom (mouse wheel around the pointer) |
+| + / − buttons bottom right / mouse wheel | Zoom (mouse wheel around the pointer) |
+| Δ button (above + / −) | Switch difference mode on/off (green while active) |
 | Tap | Set marker – snaps to the highest value within ±16 px |
 | Tap the marker | Remove marker |
 
 Header bar: pause · full range · rotate · menu (gain, clear history, about).
+The Δ/+/− buttons are drawn inside the waterfall, so they rotate together with it.
 
 The marker prefers nearby points (−0.15 dB per pixel of distance) and measured over derived
 values (−3 dB). Outside the view it is hidden and reappears when panning back; once its row
@@ -113,6 +120,11 @@ Screenshot of the running window (only with an unlocked screen):
   newer, the older one on a tie), falling back to rows below the visible area.
 - Colour scale from percentiles (8 % / 99.7 %) of the measured values, smoothed. Derived values use
   a desaturated, lightened variant of the colour map.
+- Difference mode: on activation the newest completed sweep (older sweeps fill frequencies it did
+  not cover) is kept as reference. Every sweep that starts while the mode is on is displayed as
+  value − reference with a symmetric, auto-scaled range (99.5th percentile of |Δ|, 6–40 dB).
+  Each on/off period is a separate session, so the history keeps its meaning after switching.
+  In difference sweeps the marker snaps to the largest |Δ| instead of the highest level.
 - Drawing uses GSK (texture with nearest filter, paths, Pango) in a content coordinate system that
   is rotated as a whole; input coordinates are mapped back.
 

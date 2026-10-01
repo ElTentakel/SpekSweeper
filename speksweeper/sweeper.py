@@ -166,6 +166,8 @@ class Sweeper(threading.Thread):
                 if self._stop.is_set() or self.paused or self._req_gen != gen or self._gain_dirty:
                     aborted = True
                     break
+                f0 = plan.f_lo + first * plan.bin_w
+                self.cb("tune", (f0, f0 + n * plan.bin_w, time.time()))
                 if not self.dev.set_center_freq(fc):
                     continue
                 self.dev.read_bytes(8192)              # discard settling samples

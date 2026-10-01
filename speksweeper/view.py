@@ -5,6 +5,7 @@ Drawing happens in a "content" coordinate system that can be rotated by 90°/270
 """
 import math
 import time
+from types import SimpleNamespace
 
 import numpy as np
 import gi
@@ -26,6 +27,8 @@ SNAP_X = 16           # the marker snaps to the highest value within ± this man
 SNAP_Y = 8
 SNAP_DB_PER_PX = 0.15  # … with more distant points slightly penalised
 SNAP_DERIVED_DB = 3    # and derived (grey) values ranking slightly below measured ones
+BTN_R = 22            # radius of the round on-canvas buttons (Δ, +, −)
+HOP_SHOW_S = 3.0      # the "currently measured" box disappears this long after the last retune
 
 
 def _rgba(r, g, b, a=1.0):
@@ -38,28 +41,43 @@ def _rect(x, y, w, h):
     return Graphene.Rect().init(x, y, w, h)
 
 
-def _make_lut():
-    stops = [(0.0, (2, 4, 22)), (0.2, (8, 30, 110)), (0.4, (0, 120, 200)),
-             (0.55, (40, 190, 150)), (0.7, (220, 220, 40)), (0.85, (245, 110, 20)),
-             (1.0, (255, 245, 235))]
+def _lut(stops):
     x = np.linspace(0, 1, 256)
     pos = [s[0] for s in stops]
     lut = np.zeros((256, 4), np.uint8)
     for ch in range(3):
         lut[:, ch] = np.interp(x, pos, [s[1][ch] for s in stops])
     lut[:, 3] = 255
-    # "slightly greyed out": desaturated and pulled towards mid grey
+    return lut
+
+
+def _greyed(lut):
+    """"Slightly greyed out": desaturated and pulled towards mid grey."""
     f = lut[:, :3].astype(np.float32)
     grey = (f @ np.array([0.3, 0.59, 0.11], np.float32))[:, None]
     d = (0.35 * f + 0.65 * grey) * 0.7 + 28
-    dl = np.empty_like(lut)
-    dl[:, :3] = np.clip(d, 0, 255)
-    dl[:, 3] = 255
+    out = np.empty_like(lut)
+    out[:, :3] = np.clip(d, 0, 255)
+    out[:, 3] = 255
+    return out
+
+
+def _make_lut():
+    """Combined colour table, index layout see LUT_* offsets."""
+    level = _lut([(0.0, (2, 4, 22)), (0.2, (8, 30, 110)), (0.4, (0, 120, 200)),
+                  (0.55, (40, 190, 150)), (0.7, (220, 220, 40)), (0.85, (245, 110, 20)),
+                  (1.0, (255, 245, 235))])
+    # difference: blue = weaker than the reference, dark = unchanged, yellow/red = stronger
+    diff = _lut([(0.0, (90, 170, 255)), (0.3, (20, 60, 170)), (0.5, (14, 14, 18)),
+                 (0.7, (170, 50, 20)), (0.85, (245, 150, 30)), (1.0, (255, 245, 200))])
     unknown = np.array([[24, 24, 28, 255]], np.uint8)
-    return np.vstack([lut, dl, unknown])
+    return np.vstack([level, _greyed(level), unknown, diff, _greyed(diff)])
 
 
 LUT = _make_lut()
+LUT_DERIVED = 256     # offset added for derived values
+LUT_UNKNOWN = 512
+LUT_DIFF = 513        # start of the difference colour table (+256 for derived)
 
 
 def row_height(r):
@@ -96,7 +114,11 @@ class WaterfallView(Gtk.Widget):
         self.status = "Waiting for stick …"
         self.levels = None                 # (lo_dB, hi_dB), smoothed
         self._dirty = True
-        self._img = None                   # (tex, filled, derived, rows, ncols, key)
+        self._img = None                   # SimpleNamespace, see _render_image
+        self.diff_sessions = []            # difference mode periods, see toggle_diff
+        self.diff_range = None             # ± dB of the difference colour scale, smoothed
+        self.current_hop = None            # (f0, f1, t) of the hop being measured
+        self._btn = None                   # button pressed at drag begin
         self._font = Pango.FontDescription.from_string(FONT)
         self._drag_start = None
         self._zooming = False
@@ -191,13 +213,83 @@ class WaterfallView(Gtk.Widget):
         self._dirty = True
         self.queue_draw()
 
+    def set_current_hop(self, f0, f1, t):
+        self.current_hop = (f0, f1, t)
+        self.queue_draw()
+
+    # ------------------------------------------------------------------ difference mode
+    @property
+    def diff_active(self):
+        return bool(self.diff_sessions) and self.diff_sessions[-1].end is None
+
+    def toggle_diff(self):
+        """Starts/stops difference mode.
+
+        On start, the newest completed sweep (with older sweeps filling in frequencies it did not
+        cover) becomes the reference. All sweeps that start afterwards show the difference to it,
+        until the mode is switched off again; earlier sweeps keep their normal display.
+        """
+        rows = list(self.history.rows)
+        next_id = rows[-1].id + 1 if rows else 0
+        if self.diff_active:
+            self.diff_sessions[-1].end = next_id
+        else:
+            refs = [r for r in reversed(rows) if r.done][:100]
+            self.diff_sessions.append(SimpleNamespace(start=next_id, end=None, refs=refs,
+                                                      key=None, cols=None))
+        self._dirty = True
+        self.queue_draw()
+
+    def _diff_session(self, row):
+        for s in self.diff_sessions:
+            if row.id >= s.start and (s.end is None or row.id < s.end):
+                return s
+        return None
+
+    def _ref_columns(self, sess, edges, key):
+        if sess.key != key:
+            cols = np.full(len(edges) - 1, np.nan, np.float32)
+            for r in sess.refs:
+                miss = np.isnan(cols)
+                if not miss.any():
+                    break
+                if r.f_hi < edges[0] or r.f_lo > edges[-1]:
+                    continue
+                cols[miss] = r.columns(edges)[miss]
+            sess.key, sess.cols = key, cols
+        return sess.cols
+
+    def _buttons(self):
+        """On-canvas buttons (content coordinates): name → (cx, cy)."""
+        wf, _ = self.layout()
+        x0, y0, ww, wh = wf
+        cx = x0 + ww - BTN_R - 10
+        cy = y0 + wh - BTN_R - 10
+        gap = 2 * BTN_R + 10
+        return {"zoom_out": (cx, cy), "zoom_in": (cx, cy - gap), "diff": (cx, cy - 2 * gap)}
+
+    def _button_at(self, x, y):
+        for name, (cx, cy) in self._buttons().items():
+            if math.hypot(x - cx, y - cy) <= BTN_R + 4:
+                return name
+        return None
+
+    def _press_button(self, name):
+        if name == "zoom_in":
+            self.zoom(2.0)
+        elif name == "zoom_out":
+            self.zoom(0.5)
+        elif name == "diff":
+            self.toggle_diff()
+
     # ------------------------------------------------------------------ input
     def _on_drag_begin(self, g, x, y):
         self._drag_start = (x, y, self.lo, self.hi)
         self._drag_dead = self._zooming
+        self._btn = self._button_at(*self.to_content(x, y))
 
     def _on_drag_update(self, g, ox, oy):
-        if self._zooming or self._drag_dead or self._drag_start is None:
+        if self._zooming or self._drag_dead or self._drag_start is None or self._btn:
             return
         dx, _ = self.vec_to_content(ox, oy)
         wf, _ = self.layout()
@@ -207,9 +299,14 @@ class WaterfallView(Gtk.Widget):
 
     def _on_drag_end(self, g, ox, oy):
         st = self._drag_start
+        btn, self._btn = self._btn, None
         self._drag_start = None
         if st is None or self._zooming or self._drag_dead:
             self._drag_dead = False
+            return
+        if btn:
+            if self._button_at(*self.to_content(st[0] + ox, st[1] + oy)) == btn:
+                self._press_button(btn)
             return
         if math.hypot(ox, oy) < 10:
             self._tap(*self.to_content(st[0], st[1]))
@@ -253,10 +350,10 @@ class WaterfallView(Gtk.Widget):
             self._dirty = False
             self._render_image(wf)
         img = self._img
-        rows = img[3] if img else []
+        rows = img.rows if img else []
         if not rows:
             return
-        tops = img[5]
+        tops = img.tops
         if spec and y < wf[1]:
             cand = [0]
             yc = None
@@ -282,7 +379,9 @@ class WaterfallView(Gtk.Widget):
 
     def _snap(self, x, yc, cand, img, wf):
         """Finds the highest (preferably measured) value near the tap point → (freq, row_id)."""
-        _, filled, derived, rows, ncols, tops, _ = img
+        rows, ncols, tops, derived = img.rows, img.ncols, img.tops, img.derived
+        # in difference rows the largest change counts, otherwise the highest level
+        score_src = np.where(img.diff_rows[:, None], np.abs(img.diff), img.filled)
         ww = wf[2]
         px_per_col = ww / ncols
         c_tap = min(ncols - 1, max(0, int(x / px_per_col)))
@@ -291,7 +390,7 @@ class WaterfallView(Gtk.Widget):
         best = None
         cols = np.arange(c0, c1)
         for ri in cand:
-            vals = filled[ri, c0:c1]
+            vals = score_src[ri, c0:c1]
             ry = 0 if yc is None else tops[ri] + row_height(rows[ri]) / 2 - yc
             dist = np.hypot((cols + 0.5) * px_per_col - x, ry)
             score = vals - SNAP_DB_PER_PX * dist - SNAP_DERIVED_DB * derived[ri, c0:c1]
@@ -316,7 +415,7 @@ class WaterfallView(Gtk.Widget):
             return None
         wf, _ = self.layout()
         f, rid = self.marker
-        rows, tops = img[3], img[5]
+        rows, tops = img.rows, img.tops
         ri = next((i for i, r in enumerate(rows) if r.id == rid), None)
         if ri is None or not (self.lo <= f <= self.hi) or tops[ri] >= wf[3]:
             return None
@@ -336,7 +435,26 @@ class WaterfallView(Gtk.Widget):
         n = max(1, int(np.searchsorted(tops, wf[3], side="left")))
         rows, heights, tops = rows[:n], heights[:n], tops[:n]
         filled, derived = filled[:n], derived[:n]
-        known = filled[~derived]
+        # difference rows
+        edges = np.linspace(self.lo, self.hi, ncols + 1)
+        key = (self.lo, self.hi, ncols)
+        diff = np.full_like(filled, np.nan)
+        diff_rows = np.zeros(n, bool)
+        for i, r in enumerate(rows):
+            sess = self._diff_session(r)
+            if sess is not None:
+                diff_rows[i] = True
+                diff[i] = filled[i] - self._ref_columns(sess, edges, key)
+        if diff_rows.any():
+            d = np.abs(diff[diff_rows])
+            d = d[~np.isnan(d)]
+            if d.size > 50:
+                rng = float(np.clip(np.percentile(d[:: max(1, d.size // 20000)], 99.5), 6, 40))
+                self.diff_range = rng if self.diff_range is None else \
+                    self.diff_range + 0.3 * (rng - self.diff_range)
+        if self.diff_range is None:
+            self.diff_range = 15.0
+        known = filled[~derived & ~diff_rows[:, None]]
         known = known[~np.isnan(known)]
         if known.size > 50:
             sub = known[:: max(1, known.size // 20000)]
@@ -353,13 +471,21 @@ class WaterfallView(Gtk.Widget):
         lo, hi = self.levels
         nan = np.isnan(filled)
         idx = np.clip((np.nan_to_num(filled, nan=lo) - lo) * (255.0 / (hi - lo)), 0, 255)
-        idx = idx.astype(np.int16) + derived.astype(np.int16) * 256
-        idx[nan] = 512
+        idx = idx.astype(np.int16) + derived.astype(np.int16) * LUT_DERIVED
+        idx[nan] = LUT_UNKNOWN
+        if diff_rows.any():
+            D = self.diff_range
+            dv = diff[diff_rows]
+            di = np.clip((np.nan_to_num(dv, nan=0.0) + D) * (255.0 / (2 * D)), 0, 255)
+            di = di.astype(np.int16) + LUT_DIFF + derived[diff_rows].astype(np.int16) * 256
+            di[np.isnan(dv)] = LUT_UNKNOWN
+            idx[diff_rows] = di
         rgba = np.repeat(LUT[idx], heights, axis=0)
         h, w = rgba.shape[:2]
         tex = Gdk.MemoryTexture.new(w, h, Gdk.MemoryFormat.R8G8B8A8,
                                     GLib.Bytes.new(rgba.tobytes()), w * 4)
-        self._img = (tex, filled, derived, rows, ncols, tops, h)
+        self._img = SimpleNamespace(tex=tex, filled=filled, derived=derived, rows=rows,
+                                    ncols=ncols, tops=tops, h=h, diff=diff, diff_rows=diff_rows)
 
     def do_snapshot(self, snap):
         W, H = self._size()
@@ -403,16 +529,36 @@ class WaterfallView(Gtk.Widget):
         if img is None:
             self._text(snap, x0 + ww / 2, y0 + wh / 2 - 10, self.status, align="c")
             self._draw_freq_axis(snap, wf, ch)
+            self._draw_buttons(snap)
             return
-        tex, filled, derived, rows, ncols, tops, img_h = img
         snap.push_clip(_rect(x0, y0, ww, wh))
-        snap.append_scaled_texture(tex, Gsk.ScalingFilter.NEAREST, _rect(x0, y0, ww, img_h))
+        snap.append_scaled_texture(img.tex, Gsk.ScalingFilter.NEAREST, _rect(x0, y0, ww, img.h))
         snap.pop()
-        self._draw_time_axis(snap, wf, rows, tops)
+        self._draw_time_axis(snap, wf, img.rows, img.tops)
         self._draw_freq_axis(snap, wf, ch)
         if spec:
-            self._draw_spectrum(snap, spec, filled[0], derived[0], ncols)
+            self._draw_spectrum(snap, spec, img)
         self._draw_marker(snap, wf, spec, img)
+        self._draw_buttons(snap)
+
+    def _draw_buttons(self, snap):
+        font = Pango.FontDescription.from_string("Sans Bold 15")
+        labels = {"zoom_in": "+", "zoom_out": "−", "diff": "Δ"}
+        for name, (cx, cy) in self._buttons().items():
+            active = name == "diff" and self.diff_active
+            pb = Gsk.PathBuilder.new()
+            pb.add_circle(Graphene.Point().init(cx, cy), BTN_R)
+            path = pb.to_path()
+            fill = _rgba(0.1, 0.45, 0.2, 0.9) if active else _rgba(0.05, 0.05, 0.07, 0.72)
+            snap.append_fill(path, Gsk.FillRule.WINDING, fill)
+            snap.append_stroke(path, Gsk.Stroke.new(1.0), _rgba(1, 1, 1, 0.25))
+            lay = self.create_pango_layout(labels[name])
+            lay.set_font_description(font)
+            _, log = lay.get_pixel_extents()
+            snap.save()
+            snap.translate(Graphene.Point().init(cx - log.width / 2, cy - log.height / 2))
+            snap.append_layout(lay, _rgba(1, 1, 1, 0.95))
+            snap.restore()
 
     def _draw_time_axis(self, snap, wf, rows, tops):
         x0, y0, ww, wh = wf
@@ -491,20 +637,44 @@ class WaterfallView(Gtk.Widget):
             used.append((a, b))
             self._text(snap, x, yl, name, c, align="c")
 
-    def _draw_spectrum(self, snap, spec, vals, derived, ncols):
+    def _draw_spectrum(self, snap, spec, img):
         sx, sy, sw, sh = spec
+        ncols = img.ncols
+        derived = img.derived[0]
         snap.append_color(_rgba(0.1, 0.1, 0.12), _rect(sx, sy, sw, sh))
-        lo, hi = self.levels
-        lo -= 5
-        hi += 5
+        # box around the frequency range being measured right now
+        hop = self.current_hop
+        if hop and time.time() - hop[2] < HOP_SHOW_S and hop[1] > self.lo and hop[0] < self.hi:
+            span = self.hi - self.lo
+            a = sx + max(0.0, (hop[0] - self.lo) / span) * sw
+            b = sx + min(1.0, (hop[1] - self.lo) / span) * sw
+            if b - a < 4:
+                a, b = (a + b) / 2 - 2, (a + b) / 2 + 2
+            snap.append_color(_rgba(0.0, 0.32, 0.1, 0.55), _rect(a, sy, b - a, sh))
+            for r in (_rect(a, sy, b - a, 1), _rect(a, sy + sh - 1, b - a, 1),
+                      _rect(a, sy, 1, sh), _rect(b - 1, sy, 1, sh)):
+                snap.append_color(_rgba(0.1, 0.6, 0.25, 0.95), r)
+        if img.diff_rows[0]:
+            vals = img.diff[0]
+            lo, hi = -self.diff_range - 2, self.diff_range + 2
+            unit, sign = "dB Δ", True
+        else:
+            vals = img.filled[0]
+            lo, hi = self.levels
+            lo -= 5
+            hi += 5
+            unit, sign = "dB", False
         step = 10 if (hi - lo) * 14 < sh * 10 else 20
+        if sign and hi - lo < 30:
+            step = 5
         d = math.floor(hi / step) * step
         first = True
         while d > lo:
             y = sy + sh * (1 - (d - lo) / (hi - lo))
-            snap.append_color(_rgba(1, 1, 1, 0.08), _rect(sx, y, sw, 1))
+            snap.append_color(_rgba(1, 1, 1, 0.25 if sign and d == 0 else 0.08), _rect(sx, y, sw, 1))
             if y < sy + sh - 10:
-                txt = f"{d:.0f} dB" if first else f"{d:.0f}"
+                num = f"{d:+.0f}" if sign and d else f"{d:.0f}"
+                txt = f"{num} {unit}" if first else num
                 self._text(snap, sx - 6, y - 6, txt.replace("-", "−"), _rgba(0.6, 0.6, 0.65), align="r")
                 first = False
             d -= step
@@ -531,7 +701,7 @@ class WaterfallView(Gtk.Widget):
         if not self.marker:
             return
         x0, y0, ww, wh = wf
-        tex, filled, derived, rows, ncols, tops, img_h = img
+        filled, derived, rows, ncols = img.filled, img.derived, img.rows, img.ncols
         f, rid = self.marker
         ri = next((i for i, r in enumerate(rows) if r.id == rid), None)
         if ri is None:
@@ -557,6 +727,13 @@ class WaterfallView(Gtk.Widget):
         amp = "–" if v != v else f"{v:.1f} dBFS".replace("-", "−")
         txt = f"{fmt_mhz(f, dec)} MHz   {amp}   " + \
             time.strftime("%H:%M:%S", time.localtime(rows[ri].t0))
+        if img.diff_rows[ri]:
+            ref = filled[ri, col] - img.diff[ri, col]      # reference level of this column
+            if ref == ref and v == v:
+                txt += f"   Δ {v - ref:+.1f} dB".replace("-", "−")
         if der:
             txt += "  (derived)"
-        self._text(snap, x0 + 6, y0 + 4, txt, _rgba(1, 1, 1), bg=_rgba(0, 0, 0, 0.7))
+        # readout next to the marker line (below it in the upper half, above it in the lower half),
+        # so it does not cover the newest sweeps
+        ty = y + 6 if y < y0 + wh / 2 else y - 22
+        self._text(snap, x0 + 6, ty, txt, _rgba(1, 1, 1), bg=_rgba(0, 0, 0, 0.7))

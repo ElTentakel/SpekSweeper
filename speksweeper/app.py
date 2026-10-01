@@ -7,7 +7,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from .store import History  # noqa: E402
 from .sweeper import Sweeper  # noqa: E402
@@ -15,11 +15,6 @@ from .view import WaterfallView, fmt_mhz, fmt_span  # noqa: E402
 
 APP_ID = "io.github.speksweeper.SpekSweeper"
 CONFIG = os.path.join(GLib.get_user_config_dir(), "speksweeper.json")
-
-CSS = b"""
-.osd-zoom button { min-width: 48px; min-height: 48px; }
-"""
-
 
 def load_config():
     try:
@@ -70,21 +65,7 @@ class Window(Adw.ApplicationWindow):
         rot.connect("clicked", self._on_rotate)
         hb.pack_end(rot)
 
-        # zoom buttons as OSD over the waterfall
-        overlay = Gtk.Overlay(child=self.view)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
-                      halign=Gtk.Align.END, valign=Gtk.Align.END,
-                      margin_end=10, margin_bottom=56)
-        box.add_css_class("osd-zoom")
-        for icon, fac in (("zoom-in-symbolic", 2.0), ("zoom-out-symbolic", 0.5)):
-            b = Gtk.Button(icon_name=icon)
-            b.add_css_class("osd")
-            b.add_css_class("circular")
-            b.connect("clicked", lambda _b, f=fac: self.view.zoom(f))
-            box.append(b)
-        overlay.add_overlay(box)
-
-        tv = Adw.ToolbarView(content=overlay)
+        tv = Adw.ToolbarView(content=self.view)
         tv.add_top_bar(hb)
         self.set_content(tv)
 
@@ -132,7 +113,9 @@ class Window(Adw.ApplicationWindow):
         GLib.idle_add(self._on_event, kind, data)
 
     def _on_event(self, kind, data):
-        if kind == "hop":
+        if kind == "tune":
+            self.view.set_current_hop(*data)
+        elif kind == "hop":
             rid, first, db, pool, t = data
             self.history.add_hop(rid, first, db, pool, t)
             self.view.data_changed()
@@ -201,8 +184,9 @@ class Window(Adw.ApplicationWindow):
         Adw.AboutDialog(application_name="SpekSweeper", version="0.1.0",
                         comments="Waterfall overview of the full receive range of an "
                                  "RTL-SDR stick.\n\nDrag: pan · Two fingers: zoom · "
-                                 "Tap: frequency and level. Grey-tinted areas are derived "
-                                 "from measurements close in time.",
+                                 "Tap: frequency and level · Δ: show differences to the current "
+                                 "sweep. Grey-tinted areas are derived from measurements close "
+                                 "in time.",
                         application_icon="network-wireless-symbolic").present(self)
 
     def _on_close(self, *a):
@@ -221,10 +205,6 @@ class App(Adw.Application):
 
     def do_activate(self):
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-        prov = Gtk.CssProvider()
-        prov.load_from_data(CSS)
-        Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         Window(self, self.simulate).present()
 
 
