@@ -1,8 +1,9 @@
 #!/bin/sh
-# Copies the app to the phone and creates a launcher.
+# Copies the app to another device (e.g. a phone) over ssh and installs it there.
+# Usage: ./deploy.sh user@host
 set -e
 HOST=${1:?usage: deploy.sh user@host}
-DIR=.local/share/speksweeper
 cd "$(dirname "$0")"
-tar cf - speksweeper-launch speksweeper/*.py tools/*.py io.github.speksweeper.SpekSweeper.desktop | ssh "$HOST" "mkdir -p $DIR .local/share/applications && cd $DIR && tar xf - && sed 's|@DIR@|'\$HOME/$DIR'|' io.github.speksweeper.SpekSweeper.desktop > ~/.local/share/applications/io.github.speksweeper.SpekSweeper.desktop"
-echo "installed to $HOST:~/$DIR"
+TMP=$(ssh "$HOST" mktemp -d)
+tar cf - install.sh speksweeper-launch speksweeper/*.py tools/*.py io.github.speksweeper.SpekSweeper.desktop \
+    | ssh "$HOST" "cd $TMP && tar xf - && sh install.sh && rm -rf $TMP"
