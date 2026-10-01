@@ -91,6 +91,8 @@ def fmt_mhz(f, decimals):
 
 
 def fmt_span(span):
+    if span >= 100e6:
+        return f"{span / 1e6:.0f} MHz"
     if span >= 1e6:
         return f"{span / 1e6:.3g} MHz"
     return f"{span / 1e3:.3g} kHz"

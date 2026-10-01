@@ -4,6 +4,9 @@ Waterfall overview of the full receive range of an RTL-SDR stick (DVB-T stick) �
 for **Phosh** on a Linux phone (developed on a Xiaomi Mi Mix 2S running postmarketOS/Nura).
 Python + GTK4/libadwaita + numpy, talking to `librtlsdr` directly via ctypes.
 
+![SpekSweeper in landscape on the Mi Mix 2S: full range 22–1100 MHz with FM, DAB+, 70 cm,
+DVB-T2 and LTE/GSM activity; the green box marks the range being measured](docs/screenshot-landscape.png)
+
 The goal is not a measuring instrument but a quick overview: where is something going on, and
 when was it active? There is no number entry – just panning, zooming and tapping.
 
