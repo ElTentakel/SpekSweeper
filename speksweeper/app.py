@@ -1,4 +1,4 @@
-"""Hauptprogramm: Adw-Anwendung mit Wasserfall, Kopfleiste und Sweeper-Thread."""
+"""Main program: Adw application with waterfall, header bar and sweeper thread."""
 import json
 import os
 import sys
@@ -48,29 +48,29 @@ class Window(Adw.ApplicationWindow):
         self.view.connect("view-changed", self._on_view_changed)
         self._req_timer = 0
 
-        # Kopfleiste
+        # header bar
         self.wtitle = Adw.WindowTitle(title="SpekSweeper", subtitle="")
         hb = Adw.HeaderBar(title_widget=self.wtitle)
         self.pause_btn = Gtk.ToggleButton(icon_name="media-playback-pause-symbolic",
-                                          tooltip_text="Sweep anhalten")
+                                          tooltip_text="Pause sweep")
         self.pause_btn.connect("toggled", self._on_pause)
         hb.pack_start(self.pause_btn)
-        full = Gtk.Button(icon_name="zoom-fit-best-symbolic", tooltip_text="Gesamter Bereich")
+        full = Gtk.Button(icon_name="zoom-fit-best-symbolic", tooltip_text="Full range")
         full.connect("clicked", lambda b: self.view.full())
         hb.pack_start(full)
 
         self.menu = Gio.Menu()
         self.gain_menu = Gio.Menu()
-        self.menu.append_submenu("Verstärkung", self.gain_menu)
-        self.menu.append("Verlauf löschen", "win.clear")
-        self.menu.append("Über SpekSweeper", "win.about")
+        self.menu.append_submenu("Gain", self.gain_menu)
+        self.menu.append("Clear history", "win.clear")
+        self.menu.append("About SpekSweeper", "win.about")
         hb.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=self.menu))
         rot = Gtk.Button(icon_name="object-rotate-right-symbolic",
-                         tooltip_text="Anzeige drehen (Hoch-/Querformat)")
+                         tooltip_text="Rotate display (portrait/landscape)")
         rot.connect("clicked", self._on_rotate)
         hb.pack_end(rot)
 
-        # Zoom-Knöpfe als OSD über dem Wasserfall
+        # zoom buttons as OSD over the waterfall
         overlay = Gtk.Overlay(child=self.view)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
                       halign=Gtk.Align.END, valign=Gtk.Align.END,
@@ -88,7 +88,7 @@ class Window(Adw.ApplicationWindow):
         tv.add_top_bar(hb)
         self.set_content(tv)
 
-        # Aktionen
+        # actions
         gain = self.cfg.get("gain", 19.7)
         self.gain_action = Gio.SimpleAction.new_stateful(
             "gain", GLib.VariantType.new("s"), GLib.Variant("s", "auto" if gain is None else str(gain)))
@@ -110,7 +110,7 @@ class Window(Adw.ApplicationWindow):
         self.connect("close-request", self._on_close)
         self._update_title()
         GLib.idle_add(self._request_sweep)
-        shot = os.environ.get("SPEKSWEEPER_SHOT")       # Debug: "pfad.png:sekunden"
+        shot = os.environ.get("SPEKSWEEPER_SHOT")       # debug: "path.png:seconds"
         if shot:
             path, _, sec = shot.partition(":")
             GLib.timeout_add_seconds(int(sec or 5), self._screenshot, path)
@@ -122,12 +122,12 @@ class Window(Adw.ApplicationWindow):
         paint.snapshot(snap, w, h)
         node = snap.to_node()
         if node is None:
-            return True            # noch nichts gezeichnet → später nochmal
+            return True            # nothing drawn yet → try again later
         self.get_renderer().render_texture(node, None).save_to_png(path)
         print("Screenshot:", path, w, h, flush=True)
         return False
 
-    # --- Sweeper-Ereignisse (Thread → GUI) ---
+    # --- sweeper events (thread → GUI) ---
     def _from_thread(self, kind, data):
         GLib.idle_add(self._on_event, kind, data)
 
@@ -155,11 +155,11 @@ class Window(Adw.ApplicationWindow):
 
     def _fill_gain_menu(self, gains):
         self.gain_menu.remove_all()
-        self.gain_menu.append("Automatisch (AGC)", "win.gain::auto")
+        self.gain_menu.append("Automatic (AGC)", "win.gain::auto")
         for g in gains:
-            self.gain_menu.append(f"{g:.1f} dB".replace(".", ","), f"win.gain::{g}")
+            self.gain_menu.append(f"{g:.1f} dB", f"win.gain::{g}")
 
-    # --- Ansicht ---
+    # --- view ---
     def _on_view_changed(self, view):
         self._update_title()
         if self._req_timer:
@@ -199,10 +199,10 @@ class Window(Adw.ApplicationWindow):
 
     def _on_about(self, *a):
         Adw.AboutDialog(application_name="SpekSweeper", version="0.1.0",
-                        comments="Wasserfall-Übersicht über den gesamten Empfangsbereich eines "
-                                 "RTL-SDR-Sticks.\n\nZiehen: verschieben · Zwei Finger: zoomen · "
-                                 "Tippen: Frequenz und Pegel. Grau getönte Bereiche sind aus "
-                                 "zeitlich benachbarten Messungen abgeleitet.",
+                        comments="Waterfall overview of the full receive range of an "
+                                 "RTL-SDR stick.\n\nDrag: pan · Two fingers: zoom · "
+                                 "Tap: frequency and level. Grey-tinted areas are derived "
+                                 "from measurements close in time.",
                         application_icon="network-wireless-symbolic").present(self)
 
     def _on_close(self, *a):

@@ -1,8 +1,8 @@
-"""Sweeper-Thread: tastet einen Frequenzbereich in Hops ab und liefert Leistungsspektren (dBFS).
+"""Sweeper thread: scans a frequency range in hops and delivers power spectra (dBFS).
 
-Der gewünschte Bereich kann jederzeit geändert werden (folgt der Ansicht); ein laufender Sweep wird
-dann abgebrochen und ein neuer begonnen. Ergebnisse gehen als Ereignisse an einen Callback
-(wird im Sweeper-Thread aufgerufen – der Empfänger muss selbst in den GUI-Thread umleiten).
+The requested range can be changed at any time (it follows the view); a running sweep is then
+aborted and a new one started. Results are passed as events to a callback (called in the sweeper
+thread – the receiver has to forward them to the GUI thread itself).
 """
 import math
 import threading
@@ -12,10 +12,10 @@ import numpy as np
 
 from . import rtlsdr
 
-SAMPLE_RATE = 2_560_000      # stabil bis ~2,56 MS/s
-USABLE = 0.85                # nutzbarer Anteil der Bandbreite pro Hop (Filterflanken weg)
-MAX_ROW_BINS = 4096          # mehr Bins pro Sweep werden per Maximum zusammengefasst
-MIN_ROW_TIME = 0.5           # schmale Sweeps werden durch längere Mittelung auf ≥ diese Dauer gestreckt
+SAMPLE_RATE = 2_560_000      # stable up to ~2.56 MS/s
+USABLE = 0.85                # usable fraction of the bandwidth per hop (filter skirts cut off)
+MAX_ROW_BINS = 4096          # more bins per sweep are merged by taking the maximum
+MIN_ROW_TIME = 0.5           # narrow sweeps are stretched to ≥ this duration by longer averaging
 
 
 def _pow2(x):
@@ -23,7 +23,7 @@ def _pow2(x):
 
 
 class SweepPlan:
-    """Hop-Plan für einen Bereich. Alle Hops liegen auf einem gemeinsamen Bin-Raster ab f_lo."""
+    """Hop plan for a range. All hops share a common bin grid starting at f_lo."""
 
     def __init__(self, f_lo, f_hi, target_bins, fs=SAMPLE_RATE):
         span = f_hi - f_lo
@@ -37,9 +37,9 @@ class SweepPlan:
         self.f_lo = f_lo
         self.n_bins = n_total
         self.f_hi = f_lo + n_total * self.bin_w
-        self.hops = []   # (tune_freq, erster Ziel-Bin, Anzahl Bins, erster FFT-Bin (nach fftshift))
+        self.hops = []   # (tune_freq, first target bin, number of bins, first FFT bin (after fftshift))
         if n_total <= hop_bins // 2 - 4:
-            # Schmaler Bereich: ein Hop, Ansicht neben den DC-Peak legen (Offset-Tuning)
+            # Narrow range: a single hop, placed beside the DC peak (offset tuning)
             start_fft = self.nfft // 2 + 4
             fc = f_lo - (start_fft - self.nfft // 2) * self.bin_w
             self.hops.append((fc, 0, n_total, start_fft))
@@ -48,7 +48,7 @@ class SweepPlan:
             lo_fft = (self.nfft - hop_bins) // 2
             while first < n_total:
                 n = min(hop_bins, n_total - first)
-                # Hop-Mitte so, dass Ziel-Bin "first" auf FFT-Bin lo_fft fällt
+                # hop centre chosen so that target bin "first" falls on FFT bin lo_fft
                 fc = f_lo + (first - lo_fft + self.nfft // 2) * self.bin_w
                 self.hops.append((fc, first, n, lo_fft))
                 first += n
@@ -76,7 +76,7 @@ class Sweeper(threading.Thread):
         self.dev = None
         self._row_seq = 0
 
-    # --- Steuerung (aus GUI-Thread) ---
+    # --- control (from the GUI thread) ---
     def request(self, f_lo, f_hi, target_bins):
         with self._lock:
             if self._req != (f_lo, f_hi, target_bins):
@@ -105,7 +105,7 @@ class Sweeper(threading.Thread):
             except rtlsdr.RtlSdrError as e:
                 self.cb("status", str(e))
             except OSError as e:
-                self.cb("status", f"librtlsdr nicht ladbar: {e}")
+                self.cb("status", f"cannot load librtlsdr: {e}")
             finally:
                 if self.dev is not None:
                     self.dev.close()
@@ -117,7 +117,7 @@ class Sweeper(threading.Thread):
             self.dev = SimDevice()
         else:
             while rtlsdr.device_count() == 0:
-                self.cb("status", "Kein RTL-SDR-Stick gefunden (USB-Host-Modus an? Hub mit Netzteil?)")
+                self.cb("status", "No RTL-SDR stick found (USB host mode on? powered hub?)")
                 if self._stop.wait(2.0):
                     return
             self.dev = rtlsdr.RtlSdr(0)
@@ -154,7 +154,7 @@ class Sweeper(threading.Thread):
             if win is None or len(win) != plan.nfft:
                 win = np.hanning(plan.nfft).astype(np.float32)
                 norm = 10 * math.log10((win.sum() ** 2) * 127.5 ** 2)
-            # Mittelung: mindestens 16k Samples, schmale Sweeps länger (MIN_ROW_TIME)
+            # averaging: at least 16k samples, narrow sweeps longer (MIN_ROW_TIME)
             per_hop = max(16384, MIN_ROW_TIME * SAMPLE_RATE / len(plan.hops))
             n_frames = max(1, int(min(per_hop, SAMPLE_RATE * 0.5) // plan.nfft))
             self._row_seq += 1
@@ -168,14 +168,14 @@ class Sweeper(threading.Thread):
                     break
                 if not self.dev.set_center_freq(fc):
                     continue
-                self.dev.read_bytes(8192)              # Einschwingen verwerfen
+                self.dev.read_bytes(8192)              # discard settling samples
                 iq = self.dev.read_iq(n_frames * plan.nfft)
                 m = len(iq) // plan.nfft
                 if m == 0:
                     continue
                 fr = iq[:m * plan.nfft].reshape(m, plan.nfft) * win
                 p = np.fft.fftshift(np.abs(np.fft.fft(fr, axis=1)) ** 2, axes=1).mean(axis=0)
-                c = plan.nfft // 2                    # DC-Spitze glätten
+                c = plan.nfft // 2                    # smooth the DC spike
                 p[c - 1:c + 2] = 0.5 * (p[c - 3] + p[c + 3])
                 db = 10 * np.log10(p[fft0:fft0 + n] + 1e-12) - norm
                 self.cb("hop", (row_id, first, db.astype(np.float32), plan.pool, time.time()))
@@ -183,7 +183,7 @@ class Sweeper(threading.Thread):
 
 
 class SimDevice:
-    """Simulierter Stick zum Testen ohne Hardware: Rauschen + einige typische Sender."""
+    """Simulated stick for testing without hardware: noise plus some typical transmitters."""
     name = "Simulation"
     tuner = "SIM"
     freq_range = (24e6, 1766e6)
@@ -197,7 +197,7 @@ class SimDevice:
         carriers += [(f * 1e6, -55) for f in (145.5, 433.92, 446.1, 868.3)]
         carriers += [(f * 1e6, -45) for f in (124.0, 129.4, 1090.0)]
         self.carriers = carriers
-        self.wide = [(f * 1e6, 7.6e6, -45) for f in (482, 522, 586, 626, 690)]   # DVB-T-Muxe
+        self.wide = [(f * 1e6, 7.6e6, -45) for f in (482, 522, 586, 626, 690)]   # DVB-T muxes
         self.wide += [(f * 1e6, 1.5e6, -50) for f in (178.35, 202.93, 223.94)]  # DAB
         self.wide += [(f * 1e6, 9e6, -50) for f in (796, 806, 816, 935, 950)]    # LTE/GSM
 

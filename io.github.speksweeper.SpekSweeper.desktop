@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=SpekSweeper
-Comment=Spektrum-Wasserfall mit RTL-SDR-Stick
+Comment=Spectrum waterfall with an RTL-SDR stick
 Exec=@DIR@/speksweeper-launch
 Icon=network-wireless-signal-excellent-symbolic
 Terminal=false

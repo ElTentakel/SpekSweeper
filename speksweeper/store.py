@@ -1,4 +1,4 @@
-"""Verlauf der Sweeps und Umrechnung auf ein Pixelraster (inkl. Ableitung fehlender Werte)."""
+"""Sweep history and mapping onto a pixel grid (including derivation of missing values)."""
 import collections
 
 import numpy as np
@@ -30,7 +30,7 @@ class Row:
         self.version += 1
 
     def peak_freq(self, f0, f1):
-        """Frequenz (Bin-Mitte) des höchsten gemessenen Bins zwischen f0 und f1, sonst None."""
+        """Frequency (bin centre) of the highest measured bin between f0 and f1, else None."""
         n = len(self.vals)
         i0 = max(0, int((f0 - self.f_lo) / self.bin_w))
         i1 = min(n, max(i0 + 1, int(np.ceil((f1 - self.f_lo) / self.bin_w))))
@@ -46,7 +46,7 @@ class Row:
         return None
 
     def columns(self, edges):
-        """Werte dieser Zeile für Pixelspalten mit den Frequenzgrenzen edges (Länge ncols+1)."""
+        """Values of this row for pixel columns with frequency boundaries edges (length ncols+1)."""
         n = len(self.vals)
         ncols = len(edges) - 1
         e = (edges - self.f_lo) / self.bin_w
@@ -55,7 +55,7 @@ class Row:
         if e[-1] <= 0 or e[0] >= n:
             return out
         if bpc >= 1.5:
-            # mehrere Bins pro Spalte: Maximum (schmale Träger gehen nicht verloren)
+            # several bins per column: maximum (narrow carriers are not lost)
             i0 = np.floor(e[:-1]).astype(np.int64)
             i1 = np.ceil(e[1:]).astype(np.int64)
             ok = (i1 > 0) & (i0 < n)
@@ -72,7 +72,7 @@ class Row:
             v0 = self.vals[j]
             v1 = self.vals[np.minimum(j + 1, n - 1)]
             v = v0 + (v1 - v0) * fr
-            # Rand-/NaN-Nachbarn: dann nächster bekannter Wert
+            # edge/NaN neighbours: use the nearest known value
             bad = np.isnan(v)
             if bad.any():
                 v[bad] = np.where(fr[bad] < 0.5, v0[bad], v1[bad])
@@ -108,7 +108,7 @@ class History:
         if r is None:
             return
         r.done = True
-        if np.isnan(r.vals).all():           # abgebrochen ohne Daten → verwerfen
+        if np.isnan(r.vals).all():           # aborted without data → discard
             self.rows.remove(r)
             del self.by_id[rid]
 
@@ -119,11 +119,11 @@ class History:
         return self.rows[-1] if self.rows else None
 
     def render(self, f_lo, f_hi, ncols, nrows):
-        """Matrix nrows×ncols (Zeile 0 = neuester Sweep).
+        """Matrix nrows×ncols (row 0 = newest sweep).
 
-        Rückgabe: (werte, abgeleitet, zeilen) – fehlende Werte werden aus dem zeitlich
-        nächstgelegenen bekannten Wert derselben Spalte übernommen und als abgeleitet markiert.
-        Spalten ohne jeden bekannten Wert bleiben NaN.
+        Returns (values, derived, rows) – missing values are taken from the temporally nearest
+        known value in the same column and flagged as derived. Columns without any known value
+        stay NaN.
         """
         edges = np.linspace(f_lo, f_hi, ncols + 1)
         key = (f_lo, f_hi, ncols)
@@ -140,10 +140,10 @@ class History:
             return M[:0], np.zeros((0, ncols), bool), []
         valid = ~np.isnan(M)
         derived = np.zeros_like(valid)
-        need = np.flatnonzero(~valid.all(axis=0))     # nur Spalten mit Lücken bearbeiten
+        need = np.flatnonzero(~valid.all(axis=0))     # only process columns with gaps
         if need.size == 0:
             return M, derived, rows
-        # Basiswert aus Zeilen älter als der sichtbare Bereich
+        # fallback value from rows older than the visible range
         base = np.full(need.size, np.nan, np.float32)
         for r in allrows[R:R + 400]:
             miss = np.isnan(base)
@@ -157,9 +157,9 @@ class History:
         ridx = np.arange(R, dtype=np.int32)[:, None]
         big = np.int32(1 << 30)
         old = np.where(vs, ridx, np.int32(R))
-        old = np.minimum.accumulate(old[::-1], axis=0)[::-1]       # nächste ältere Zeile
+        old = np.minimum.accumulate(old[::-1], axis=0)[::-1]       # nearest older row
         new = np.where(vs, ridx, np.int32(-1))
-        new = np.maximum.accumulate(new, axis=0)                   # nächste neuere Zeile
+        new = np.maximum.accumulate(new, axis=0)                   # nearest newer row
         d_old = np.where(old < R, old - ridx, big)
         d_new = np.where(new >= 0, ridx - new, big)
         src = np.where(d_old <= d_new, old, new)

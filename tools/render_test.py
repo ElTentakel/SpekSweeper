@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Rendert das Wasserfall-Widget ohne sichtbares Fenster in PNG-Dateien (Test/Screenshots).
+"""Renders the waterfall widget to PNG files without a visible window (tests/screenshots).
 
-Aufruf: render_test.py [--sim] [sekunden] [ausgabe-präfix]
-Sweept erst ganz, dann gezoomt (DVB-T/UKW), damit abgeleitete Bereiche entstehen.
+Usage: render_test.py [--sim] [seconds] [output-prefix]
+Sweeps the full range first, then a zoomed range (DVB-T), so that derived areas appear.
 """
 import os
 import sys
@@ -48,7 +48,7 @@ def pump(dur):
                 hist.finish(*d)
             elif k == "device":
                 view.range = d["range"]
-                print("Gerät:", d["name"], d["tuner"], d["range"])
+                print("Device:", d["name"], d["tuner"], d["range"])
             elif k == "status":
                 print("Status:", d)
 
@@ -77,7 +77,7 @@ lo, hi = 440e6, 720e6
 view.lo, view.hi = lo, hi
 sw.request(lo, hi, 1024)
 pump(secs / 2)
-view.lo, view.hi = 400e6, 680e6       # verschoben → links abgeleitete Bereiche
+view.lo, view.hi = 400e6, 680e6       # panned → derived areas on the left
 shot("dvbt_portrait", 360, 650)
 shot("dvbt_landscape", 720, 300)
 shot("dvbt_rot90", 360, 650, 90)
@@ -85,12 +85,12 @@ view.force_size = (360, 650)
 view.rotation = 0
 view._dirty = True
 wf, _ = view.layout()
-for f_tap in (430e6, 512e6):                 # Tippen neben ISM 433 bzw. neben einem DVB-T-Mux
+for f_tap in (430e6, 512e6):                 # tap next to ISM 433 / next to a DVB-T mux
     x = wf[0] + (f_tap - view.lo) / (view.hi - view.lo) * wf[2]
     view.marker = None
     view._tap(x, wf[1] + 3)
-    print(f"Tippen bei {f_tap / 1e6:.2f} MHz → Marker {view.marker[0] / 1e6:.4f} MHz")
+    print(f"tap at {f_tap / 1e6:.2f} MHz → marker {view.marker[0] / 1e6:.4f} MHz")
     shot(f"marker_{f_tap / 1e6:.0f}", 360, 650)
-view.lo, view.hi = 600e6, 700e6          # Marker außerhalb → darf nicht erscheinen
+view.lo, view.hi = 600e6, 700e6          # marker outside → must not appear
 shot("marker_hidden", 360, 650)
 sw.stop()

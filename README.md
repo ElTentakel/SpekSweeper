@@ -1,143 +1,142 @@
 # SpekSweeper
 
-Wasserfall-Übersicht über den gesamten Empfangsbereich eines RTL-SDR-Sticks (DVB-T-Stick) –
-als Touch-App für **Phosh** auf einem Linux-Telefon (entwickelt auf Xiaomi Mi Mix 2S mit
-postmarketOS/Nura). Python + GTK4/libadwaita + numpy, `librtlsdr` direkt per ctypes.
+Waterfall overview of the full receive range of an RTL-SDR stick (DVB-T stick) – as a touch app
+for **Phosh** on a Linux phone (developed on a Xiaomi Mi Mix 2S running postmarketOS/Nura).
+Python + GTK4/libadwaita + numpy, talking to `librtlsdr` directly via ctypes.
 
-Ziel ist kein Messgerät, sondern ein schneller Überblick: Wo ist was los, wann war es aktiv?
-Bedient wird ohne Zahleneingabe – nur Verschieben, Zoomen und Antippen.
+The goal is not a measuring instrument but a quick overview: where is something going on, and
+when was it active? There is no number entry – just panning, zooming and tapping.
 
-## Funktionen
+## Features
 
-- **Wasserfall** über den gesamten Tunerbereich (FC0013: 22–1100 MHz, R820T/R828D: 24–1766 MHz),
-  neueste Messung oben, darüber ein Spektrumstreifen der aktuellen Messung.
-- **Frequenzachse unten** mit runden MHz-Marken, farbiger Bandleiste (UKW, Flugfunk, DAB+, BOS,
-  70 cm, DVB-T2, LTE, SRD 868 …) und markanten Einzelfrequenzen (ADS-B, ISM 433, AIS, ISS, …).
-- **Zeitachse links** (hh:mm:ss).
-- **Sweep folgt der Ansicht**: Ein kleinerer Ausschnitt wird schneller und feiner abgetastet.
-- **Abgeleitete Daten**: Was in einem Sweep nicht gemessen wurde (weil vorher verschoben/gezoomt
-  wurde oder der Sweep noch läuft), wird aus der zeitlich nächsten Messung derselben Frequenz
-  übernommen und **leicht grau getönt** dargestellt.
-- **Marker** per Tippen: Frequenz, Pegel (dBFS) und Zeit.
-- **Hoch- und Querformat**, zusätzlich Drehknopf (0°/90°/270°) für den Fall, dass das System
-  nicht automatisch dreht.
-- Automatische Farbskala, Verstärkung wählbar (AGC oder feste Stufe), Pause.
-- Ansicht, Drehung und Verstärkung werden in `~/.config/speksweeper.json` gespeichert.
+- **Waterfall** across the whole tuner range (FC0013: 22–1100 MHz, R820T/R828D: 24–1766 MHz),
+  newest sweep on top, with a spectrum strip of the current sweep above it.
+- **Frequency axis at the bottom** with round MHz ticks, a coloured band strip (FM, airband, DAB+,
+  TETRA, 70 cm, DVB-T2, LTE, SRD 868 …) and notable single frequencies (ADS-B, ISM 433, AIS,
+  ISS, …).
+- **Time axis on the left** (hh:mm:ss).
+- **The sweep follows the view**: a smaller range is scanned faster and at higher resolution.
+- **Derived data**: whatever a sweep did not measure (because the view was panned/zoomed before,
+  or the sweep is still running) is taken from the temporally nearest measurement of the same
+  frequency and shown **slightly greyed out**.
+- **Marker** by tapping: frequency, level (dBFS) and time.
+- **Portrait and landscape**, plus a rotate button (0°/90°/270°) for when the system does not
+  rotate automatically.
+- Automatic colour scale, selectable gain (AGC or a fixed step), pause.
+- View, rotation and gain are stored in `~/.config/speksweeper.json`.
 
-## Bedienung
+## Usage
 
-| Geste | Wirkung |
+| Gesture | Effect |
 |---|---|
-| Waagrecht ziehen | Frequenzbereich verschieben |
-| Zwei Finger spreizen/zusammenziehen | Frequenz-Zoom um den Mittelpunkt der Finger |
-| Lupen-Knöpfe unten rechts / Mausrad | Zoom (Mausrad um die Zeigerposition) |
-| Tippen | Marker setzen – rastet auf den höchsten Wert im Umkreis von ±16 px ein |
-| Auf den Marker tippen | Marker entfernen |
+| Drag horizontally | Pan the frequency range |
+| Pinch with two fingers | Frequency zoom around the centre of the fingers |
+| Zoom buttons bottom right / mouse wheel | Zoom (mouse wheel around the pointer) |
+| Tap | Set marker – snaps to the highest value within ±16 px |
+| Tap the marker | Remove marker |
 
-Kopfleiste: Pause · Gesamtbereich · Drehen · Menü (Verstärkung, Verlauf löschen, Über).
+Header bar: pause · full range · rotate · menu (gain, clear history, about).
 
-Der Marker bevorzugt nahe Punkte (−0,15 dB pro Pixel Abstand) und gemessene vor abgeleiteten
-Werten (−3 dB). Außerhalb der Ansicht wird er ausgeblendet und erscheint beim Zurückschieben
-wieder; fällt seine Zeile aus dem Verlauf, wird er gelöscht.
+The marker prefers nearby points (−0.15 dB per pixel of distance) and measured over derived
+values (−3 dB). Outside the view it is hidden and reappears when panning back; once its row
+drops out of the history it is removed.
 
-## Voraussetzungen
+## Requirements
 
-- Linux mit GTK ≥ 4.14 (genutzt: `Gsk.PathBuilder`, `realize_for_display`), libadwaita ≥ 1.5,
-  Python 3 mit PyGObject und numpy, `librtlsdr`.
-  Auf postmarketOS: `sudo apk add rtl-sdr py3-numpy py3-gobject3 libadwaita`
-- Kein DVB-Kerneltreiber für den Stick aktiv (sonst `dvb_usb_rtl28xxu` blacklisten).
-- Zugriff ohne root über die udev-Regel aus `rtl-sdr` (Gruppe `plugdev`, Benutzer muss Mitglied
-  sein). War der Stick vor dem Laden der Regel eingesteckt: `sudo udevadm trigger`.
-- Auf dem Mi Mix 2S: USB-Port in den Host-Modus schalten (`sudo usb-host-mode on`) und den Stick
-  über einen Hub mit eigener Stromversorgung betreiben – das Telefon liefert keine 5 V.
+- Linux with GTK ≥ 4.14 (uses `Gsk.PathBuilder`, `realize_for_display`), libadwaita ≥ 1.5,
+  Python 3 with PyGObject and numpy, `librtlsdr`.
+  On postmarketOS: `sudo apk add rtl-sdr py3-numpy py3-gobject3 libadwaita`
+- No DVB kernel driver bound to the stick (otherwise blacklist `dvb_usb_rtl28xxu`).
+- Access without root via the udev rule shipped with `rtl-sdr` (group `plugdev`; the user must be
+  a member). If the stick was plugged in before the rule was loaded: `sudo udevadm trigger`.
+- On the Mi Mix 2S: switch the USB port to host mode (`sudo usb-host-mode on`) and run the stick
+  through a powered hub – the phone does not supply 5 V.
 
 ## Installation
 
-    ./deploy.sh benutzer@host
+    ./deploy.sh user@host
 
-kopiert die App per `tar` über ssh nach `~/.local/share/speksweeper` und legt den Starter
-„SpekSweeper“ an. Direkt starten:
+copies the app via `tar` over ssh to `~/.local/share/speksweeper` and creates the launcher
+"SpekSweeper". To start directly:
 
-    ./speksweeper-launch            # mit Stick
-    ./speksweeper-launch --sim      # simulierte Signale (UKW, DAB, DVB-T, LTE, …), kein Stick nötig
+    ./speksweeper-launch             # with stick
+    ./speksweeper-launch --sim       # simulated signals (FM, DAB, DVB-T, LTE, …), no stick needed
 
-Per ssh auf dem Telefon starten:
+Starting on the phone over ssh:
 `XDG_RUNTIME_DIR=/run/user/$(id -u) WAYLAND_DISPLAY=wayland-0 ~/.local/share/speksweeper/speksweeper-launch`
 
-## Testen
+## Testing
 
-    python3 tools/render_test.py [--sim] [sekunden] [präfix]    # z. B. 60 /tmp/wf
+    python3 tools/render_test.py [--sim] [seconds] [prefix]    # e.g. 60 /tmp/wf
 
-Sweept erst den Gesamtbereich, zoomt dann auf 440–720 MHz, verschiebt die Ansicht, setzt Marker
-per simuliertem Tippen und schreibt PNGs (Hoch-/Querformat, gedreht, Marker). Das Widget wird dabei
-ohne sichtbares Fenster gerendert – funktioniert also auch bei gesperrtem Telefon, auf dem Phosh
-keine Fenster zeichnet.
+Sweeps the full range, then zooms to 440–720 MHz, pans the view, places markers by simulated
+taps and writes PNGs (portrait/landscape, rotated, markers). The widget is rendered without a
+visible window, so this also works while the phone is locked (Phosh does not draw windows then).
 
-Screenshot des laufenden Fensters (nur bei entsperrtem Bildschirm):
+Screenshot of the running window (only with an unlocked screen):
 `SPEKSWEEPER_SHOT=/tmp/x.png:20 ./speksweeper-launch`
 
-## Aufbau
+## Structure
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `speksweeper/rtlsdr.py` | ctypes-Anbindung an `librtlsdr` (öffnen, Tuner/Gain, `read_sync`) |
-| `speksweeper/sweeper.py` | Hop-Plan, FFT, Sweeper-Thread, `SimDevice` für Tests ohne Stick |
-| `speksweeper/store.py` | Sweep-Verlauf, Abbildung auf Pixelspalten, Ableitung fehlender Werte |
-| `speksweeper/view.py` | Wasserfall-Widget: GSK-Snapshot, Gesten, Achsen, Bänder, Marker, Drehung |
-| `speksweeper/bands.py` | Bänder und markante Frequenzen für die Achsenbeschriftung |
-| `speksweeper/app.py` | Adw-Anwendung, Kopfleiste, Menü, Einstellungen |
-| `speksweeper-launch` | Startskript |
-| `io.github.speksweeper.SpekSweeper.desktop` | Starter-Vorlage (`@DIR@` ersetzt `deploy.sh`) |
-| `tools/render_test.py` | Render-Test ohne Fenster |
+| `speksweeper/rtlsdr.py` | ctypes binding for `librtlsdr` (open, tuner/gain, `read_sync`) |
+| `speksweeper/sweeper.py` | Hop plan, FFT, sweeper thread, `SimDevice` for testing without a stick |
+| `speksweeper/store.py` | Sweep history, mapping to pixel columns, derivation of missing values |
+| `speksweeper/view.py` | Waterfall widget: GSK snapshot, gestures, axes, bands, marker, rotation |
+| `speksweeper/bands.py` | Bands and notable frequencies for the axis labels |
+| `speksweeper/app.py` | Adw application, header bar, menu, settings |
+| `speksweeper-launch` | Start script |
+| `io.github.speksweeper.SpekSweeper.desktop` | Launcher template (`deploy.sh` replaces `@DIR@`) |
+| `tools/render_test.py` | Render test without a window |
 
-### Messung (`sweeper.py`)
+### Measurement (`sweeper.py`)
 
-- Abtastrate 2,56 MS/s (RTL2832U stabil bis ~2,56 MS/s), davon 85 % pro Hop genutzt
-  (Filterflanken abgeschnitten).
-- FFT-Größe 256–8192 abhängig von der gewünschten Auflösung (≈ eine Spalte pro Bildschirmpixel),
-  Hann-Fenster, Leistungsmittelung, DC-Spitze geglättet, Ergebnis in dBFS.
-- Bereiche schmaler als ein halber Hop werden mit Offset abgestimmt, damit die DC-Spitze außerhalb
-  liegt.
-- Schmale Sweeps werden durch längere Mittelung auf ≥ 0,5 s gestreckt (weniger Rauschen, Verlauf
-  läuft nicht zu schnell durch).
-- Mehr als 4096 Bins pro Sweep werden per Maximum zusammengefasst (schmale Träger bleiben sichtbar).
-- Ändert sich die Ansicht, wird der laufende Sweep abgebrochen und nach 350 ms Ruhe neu geplant.
-- Jeder Hop wird sofort an die Oberfläche gemeldet – der oberste Sweep füllt sich live.
+- Sample rate 2.56 MS/s (the RTL2832U is stable up to ~2.56 MS/s), 85 % of it used per hop
+  (filter skirts cut off).
+- FFT size 256–8192 depending on the requested resolution (≈ one column per screen pixel),
+  Hann window, power averaging, DC spike smoothed, result in dBFS.
+- Ranges narrower than half a hop are offset-tuned so the DC spike lies outside.
+- Narrow sweeps are stretched to ≥ 0.5 s by longer averaging (less noise, and the history does
+  not scroll by too fast).
+- More than 4096 bins per sweep are merged by taking the maximum (narrow carriers stay visible).
+- When the view changes, the running sweep is aborted and re-planned after 350 ms of quiet.
+- Every hop is reported to the UI immediately – the top sweep fills in live.
 
-### Darstellung (`store.py`, `view.py`)
+### Display (`store.py`, `view.py`)
 
-- Eine Wasserfall-Zeile pro Sweep; ihre Höhe wächst mit der Sweep-Dauer
-  (0,5 s → 2 px, ≥ 32 s → 16 px), damit langsame Gesamt-Sweeps sichtbar bleiben.
-- Pro Zeile werden die Messwerte auf die Pixelspalten abgebildet: bei mehreren Bins pro Spalte das
-  Maximum, sonst linear interpoliert. Ergebnisse werden je Zeile gecacht.
-- Lücken werden spaltenweise aus der zeitlich nächsten Zeile mit Messwert gefüllt (ältere oder
-  neuere, bei Gleichstand die ältere), notfalls aus Zeilen unterhalb des sichtbaren Bereichs.
-- Farbskala aus Perzentilen (8 % / 99,7 %) der gemessenen Werte, geglättet. Abgeleitete Werte
-  nutzen eine entsättigte, aufgehellte Variante der Farbtabelle.
-- Gezeichnet wird mit GSK (Textur mit Nearest-Filter, Pfade, Pango) in einem Inhalts-
-  Koordinatensystem, das für die Drehung als Ganzes rotiert wird; Eingaben werden zurückgerechnet.
+- One waterfall row per sweep; its height grows with the sweep duration
+  (0.5 s → 2 px, ≥ 32 s → 16 px) so slow full-range sweeps remain visible.
+- Each row's values are mapped onto the pixel columns: the maximum when there are several bins per
+  column, linear interpolation otherwise. Results are cached per row.
+- Gaps are filled column by column from the temporally nearest row with a measurement (older or
+  newer, the older one on a tie), falling back to rows below the visible area.
+- Colour scale from percentiles (8 % / 99.7 %) of the measured values, smoothed. Derived values use
+  a desaturated, lightened variant of the colour map.
+- Drawing uses GSK (texture with nearest filter, paths, Pango) in a content coordinate system that
+  is rotated as a whole; input coordinates are mapped back.
 
-## Messwerte auf dem Mi Mix 2S (Logilink VG0002A, RTL2832U + FC0013)
+## Measurements on the Mi Mix 2S (Logilink VG0002A, RTL2832U + FC0013)
 
 | | |
 |---|---|
-| Umstimmen FC0013 (`rtlsdr_set_center_freq`) | **~115 ms** pro Hop – der eigentliche Engpass |
-| Messung pro Hop (16k Samples) | ~7 ms |
-| Gesamtbereich 22–1100 MHz | ~500 Hops, **~65 s** |
-| Bildaufbau (Python/numpy) | 10–70 ms |
+| FC0013 retune (`rtlsdr_set_center_freq`) | **~115 ms** per hop – the actual bottleneck |
+| Measurement per hop (16k samples) | ~7 ms |
+| Full range 22–1100 MHz | ~500 hops, **~65 s** |
+| Image rendering (Python/numpy) | 10–70 ms |
 
-Bei ~949 MHz meldet der FC0013 „no valid PLL combination“; der Hop wird übersprungen und die
-Lücke als abgeleitet dargestellt.
+Around 949 MHz the FC0013 reports "no valid PLL combination"; that hop is skipped and the gap
+is shown as derived.
 
-## Mögliche Erweiterungen
+## Possible extensions
 
-Die Sweep-Zeit hängt fast nur an der Zahl der Umstimmvorgänge. `rtl_power` wäre nicht schneller
-(gleicher Treiber, gleiche ~130 ms/Hop). Ansätze:
+Sweep time depends almost entirely on the number of retunes. `rtl_power` would not be faster
+(same driver, same ~130 ms per hop). Options:
 
-1. **Breitere Hops** für weite Bereiche: 3,2 MS/s und 90 % Nutzung → ~25 % weniger Hops; dafür
-   gelegentliche Sample-Verluste und etwas ungenauere Ränder.
-2. **Adaptiv sweepen**: ruhige Abschnitte nur jeden 3.–5. Durchlauf messen, aktive jedes Mal; die
-   Lücken füllt die vorhandene Ableitung. Grob Faktor 2–3.
-3. **FC0013-Treiber profilieren**: herausfinden, wo die 115 ms beim Umstimmen entstehen.
-4. **Anderer Stick**: RTL-SDR Blog V4 (R828D) bis ~1,7 GHz, mit Bias-Tee, vermutlich deutlich
-   schnelleres Umstimmen (nicht gemessen).
+1. **Wider hops** for wide ranges: 3.2 MS/s with 90 % usage → ~25 % fewer hops, at the cost of
+   occasional sample loss and slightly less accurate hop edges.
+2. **Adaptive sweeping**: measure quiet sections only every 3rd–5th pass and active ones every
+   time; the existing derivation fills the gaps. Roughly a factor of 2–3.
+3. **Profile the FC0013 driver**: find out where the 115 ms per retune are spent.
+4. **Different stick**: RTL-SDR Blog V4 (R828D) up to ~1.7 GHz, with bias tee, probably much
+   faster retuning (not measured).

@@ -1,7 +1,7 @@
-"""Wasserfall-Widget: Spektrum oben, Wasserfall, Zeitachse links, Frequenzachse + Bänder unten.
+"""Waterfall widget: spectrum on top, waterfall, time axis left, frequency axis + bands below.
 
-Gezeichnet wird in einem „Inhalts“-Koordinatensystem, das bei Bedarf um 90°/270° gedreht wird
-(Bedienung quer, auch wenn das System selbst nicht dreht).
+Drawing happens in a "content" coordinate system that can be rotated by 90°/270°
+(landscape use even when the system itself does not rotate).
 """
 import math
 import time
@@ -17,15 +17,15 @@ from gi.repository import Gdk, GLib, GObject, Graphene, Gsk, Gtk, Pango  # noqa:
 from .bands import BANDS, POINTS  # noqa: E402
 
 MIN_SPAN = 200e3
-ROW_PX = 2            # Mindesthöhe einer Sweep-Zeile (logische Pixel)
-ROW_MAX = 16          # Höchsthöhe (lange Sweeps über den Gesamtbereich)
-AXIS_L = 52           # Zeitachse
-AXIS_B = 40           # Frequenzachse + Bandleiste
+ROW_PX = 2            # minimum height of a sweep row (logical pixels)
+ROW_MAX = 16          # maximum height (long sweeps over the full range)
+AXIS_L = 52           # time axis
+AXIS_B = 40           # frequency axis + band strip
 FONT = "Sans 8"
-SNAP_X = 16           # Marker rastet im Umkreis von ± so vielen Pixeln auf den höchsten Wert ein …
+SNAP_X = 16           # the marker snaps to the highest value within ± this many pixels …
 SNAP_Y = 8
-SNAP_DB_PER_PX = 0.15  # … wobei weiter entfernte Punkte etwas abgewertet werden
-SNAP_DERIVED_DB = 3    # und abgeleitete (graue) Werte leicht hinter gemessenen zurückstehen
+SNAP_DB_PER_PX = 0.15  # … with more distant points slightly penalised
+SNAP_DERIVED_DB = 3    # and derived (grey) values ranking slightly below measured ones
 
 
 def _rgba(r, g, b, a=1.0):
@@ -48,7 +48,7 @@ def _make_lut():
     for ch in range(3):
         lut[:, ch] = np.interp(x, pos, [s[1][ch] for s in stops])
     lut[:, 3] = 255
-    # „leicht ausgegraut“: entsättigt und etwas zum Mittelgrau gezogen
+    # "slightly greyed out": desaturated and pulled towards mid grey
     f = lut[:, :3].astype(np.float32)
     grey = (f @ np.array([0.3, 0.59, 0.11], np.float32))[:, None]
     d = (0.35 * f + 0.65 * grey) * 0.7 + 28
@@ -63,19 +63,19 @@ LUT = _make_lut()
 
 
 def row_height(r):
-    """Zeilenhöhe wächst mit der Sweep-Dauer (Wurzel), damit lange Sweeps sichtbar bleiben."""
+    """Row height grows with sweep duration (square root) so long sweeps stay visible."""
     dur = max(r.t1 - r.t0, 0.0)
     return int(min(ROW_MAX, max(ROW_PX, round(ROW_PX * math.sqrt(dur / 0.5)))))
 
 
 def fmt_mhz(f, decimals):
-    return f"{f / 1e6:.{decimals}f}".replace(".", ",")
+    return f"{f / 1e6:.{decimals}f}"
 
 
 def fmt_span(span):
     if span >= 1e6:
-        return f"{span / 1e6:.3g} MHz".replace(".", ",")
-    return f"{span / 1e3:.3g} kHz".replace(".", ",")
+        return f"{span / 1e6:.3g} MHz"
+    return f"{span / 1e3:.3g} kHz"
 
 
 class WaterfallView(Gtk.Widget):
@@ -93,8 +93,8 @@ class WaterfallView(Gtk.Widget):
         self.lo, self.hi = self.range
         self.rotation = 0                  # 0, 90, 270
         self.marker = None                 # (freq, row_id)
-        self.status = "Warte auf Stick …"
-        self.levels = None                 # (lo_dB, hi_dB), geglättet
+        self.status = "Waiting for stick …"
+        self.levels = None                 # (lo_dB, hi_dB), smoothed
         self._dirty = True
         self._img = None                   # (tex, filled, derived, rows, ncols, key)
         self._font = Pango.FontDescription.from_string(FONT)
@@ -117,12 +117,12 @@ class WaterfallView(Gtk.Widget):
         scroll.connect("scroll", self._on_scroll)
         self.add_controller(scroll)
         self._pointer = None
-        self.force_size = None             # (w, h) für Tests ohne Fenster
+        self.force_size = None             # (w, h) for tests without a window
         motion = Gtk.EventControllerMotion()
         motion.connect("motion", lambda c, x, y: setattr(self, "_pointer", (x, y)))
         self.add_controller(motion)
 
-    # ------------------------------------------------------------------ Geometrie
+    # ------------------------------------------------------------------ geometry
     def _size(self):
         return self.force_size or (self.get_width(), self.get_height())
 
@@ -152,7 +152,7 @@ class WaterfallView(Gtk.Widget):
         spec = (AXIS_L, 4, wf[2], spec_h - 8) if spec_h else None
         return wf, spec
 
-    # ------------------------------------------------------------------ Ansicht
+    # ------------------------------------------------------------------ view
     def set_range(self, r0, r1):
         self.range = (r0, r1)
         self.set_view(self.lo, self.hi)
@@ -191,7 +191,7 @@ class WaterfallView(Gtk.Widget):
         self._dirty = True
         self.queue_draw()
 
-    # ------------------------------------------------------------------ Eingabe
+    # ------------------------------------------------------------------ input
     def _on_drag_begin(self, g, x, y):
         self._drag_start = (x, y, self.lo, self.hi)
         self._drag_dead = self._zooming
@@ -249,7 +249,7 @@ class WaterfallView(Gtk.Widget):
         wf, spec = self.layout()
         if not (wf[0] <= x <= wf[0] + wf[2]):
             return
-        if self._dirty or self._img is None:   # Bild passend zur aktuellen Ansicht/Größe
+        if self._dirty or self._img is None:   # image matching the current view/size
             self._dirty = False
             self._render_image(wf)
         img = self._img
@@ -270,7 +270,7 @@ class WaterfallView(Gtk.Widget):
                 return
         else:
             return
-        # erneutes Tippen nahe am Marker entfernt ihn
+        # tapping again near the marker removes it
         if self.marker and self._marker_xy() is not None:
             mx, my = self._marker_xy()
             if abs(mx - x) < 14 and (yc is None or abs(my - y) < 14):
@@ -281,7 +281,7 @@ class WaterfallView(Gtk.Widget):
         self.queue_draw()
 
     def _snap(self, x, yc, cand, img, wf):
-        """Sucht in der Nähe des Tippunkts den höchsten (gemessenen) Wert → (freq, row_id)."""
+        """Finds the highest (preferably measured) value near the tap point → (freq, row_id)."""
         _, filled, derived, rows, ncols, tops, _ = img
         ww = wf[2]
         px_per_col = ww / ncols
@@ -310,7 +310,7 @@ class WaterfallView(Gtk.Widget):
         return (f if f is not None else 0.5 * (e0 + e1), rows[ri].id)
 
     def _marker_xy(self):
-        """Marker-Position in Inhaltskoordinaten oder None, wenn nicht sichtbar."""
+        """Marker position in content coordinates, or None if not visible."""
         img = self._img
         if not self.marker or img is None:
             return None
@@ -323,7 +323,7 @@ class WaterfallView(Gtk.Widget):
         x = wf[0] + (f - self.lo) / (self.hi - self.lo) * wf[2]
         return x, wf[1] + tops[ri] + row_height(rows[ri]) / 2
 
-    # ------------------------------------------------------------------ Rendern
+    # ------------------------------------------------------------------ rendering
     def _render_image(self, wf):
         ncols = max(16, int(min(2048, wf[2] * self.get_scale_factor())))
         nrows = max(1, int(wf[3] // ROW_PX))
@@ -444,7 +444,7 @@ class WaterfallView(Gtk.Widget):
         fx = lambda f: x0 + (f - self.lo) / span * ww  # noqa: E731
         ya = y0 + wh
         snap.append_color(_rgba(0.5, 0.5, 0.55), _rect(x0, ya, ww, 1))
-        # Bandleiste
+        # band strip
         yb = ya + 1
         occupied = []
         for f0, f1, name, rgb in BANDS:
@@ -452,7 +452,7 @@ class WaterfallView(Gtk.Widget):
                 continue
             a, b = max(fx(f0), x0), min(fx(f1), x0 + ww)
             snap.append_color(_rgba(*rgb, 0.75), _rect(a, yb, max(b - a, 1.5), 4))
-        # Ticks + Beschriftung
+        # ticks + labels
         step = self._nice_step(span, ww)
         dec = max(0, -math.floor(math.log10(step / 1e6) + 1e-9))
         f = math.ceil(self.lo / step) * step
@@ -464,7 +464,7 @@ class WaterfallView(Gtk.Widget):
             tw, _ = self._text(snap, x, yb + 7, fmt_mhz(f, dec), col, align="c")
             occupied.append((x - tw / 2 - 4, x + tw / 2 + 4))
             f += step
-        # Bandnamen / markante Punkte in eine zweite Zeile, wenn Platz
+        # band names / notable points in a second line, where there is room
         yl = yb + 21
         labels = []
         for f0, f1, name, rgb in BANDS:
@@ -477,7 +477,7 @@ class WaterfallView(Gtk.Widget):
                 x = fx(fp)
                 snap.append_color(_rgba(1, 0.9, 0.5, 0.9), _rect(x - 0.5, yb, 1.5, 8))
                 labels.append((x, name, _rgba(1, 0.9, 0.5), 0))
-        labels.sort(key=lambda l: -l[3])        # breite Bänder zuerst
+        labels.sort(key=lambda l: -l[3])        # wide bands first
         used = []
         for x, name, c, width in labels:
             lay = self.create_pango_layout(name)
@@ -536,10 +536,10 @@ class WaterfallView(Gtk.Widget):
         ri = next((i for i, r in enumerate(rows) if r.id == rid), None)
         if ri is None:
             if not any(r.id == rid for r in self.history.rows):
-                self.marker = None           # Zeile aus dem Verlauf gefallen
+                self.marker = None           # row dropped out of the history
             return
         pos = self._marker_xy()
-        if pos is None:                      # außerhalb des sichtbaren Bereichs → nicht zeichnen
+        if pos is None:                      # outside the visible area → do not draw
             return
         x, y = pos
         span = self.hi - self.lo
@@ -554,9 +554,9 @@ class WaterfallView(Gtk.Widget):
         snap.append_color(_rgba(1, 1, 1, 1), _rect(x - 3, y - 3, 7, 7))
         snap.append_color(_rgba(0, 0, 0, 1), _rect(x - 1.5, y - 1.5, 4, 4))
         dec = 3 if span > 2e6 else 4
-        amp = "–" if v != v else f"{v:.1f} dBFS".replace(".", ",").replace("-", "−")
+        amp = "–" if v != v else f"{v:.1f} dBFS".replace("-", "−")
         txt = f"{fmt_mhz(f, dec)} MHz   {amp}   " + \
             time.strftime("%H:%M:%S", time.localtime(rows[ri].t0))
         if der:
-            txt += "  (abgeleitet)"
+            txt += "  (derived)"
         self._text(snap, x0 + 6, y0 + 4, txt, _rgba(1, 1, 1), bg=_rgba(0, 0, 0, 0.7))

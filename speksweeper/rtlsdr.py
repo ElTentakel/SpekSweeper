@@ -1,12 +1,12 @@
-"""Minimale ctypes-Anbindung an librtlsdr (nur das, was der Sweeper braucht)."""
+"""Minimal ctypes binding for librtlsdr (only what the sweeper needs)."""
 import ctypes
 import ctypes.util
 
 import numpy as np
 
-TUNER_NAMES = {0: "unbekannt", 1: "E4000", 2: "FC0012", 3: "FC0013",
+TUNER_NAMES = {0: "unknown", 1: "E4000", 2: "FC0012", 3: "FC0013",
                4: "FC2580", 5: "R820T", 6: "R828D"}
-# grobe Abstimmbereiche je Tuner in Hz
+# approximate tuning ranges per tuner in Hz
 TUNER_RANGES = {1: (52e6, 2200e6), 2: (22e6, 948e6), 3: (22e6, 1100e6),
                 4: (146e6, 924e6), 5: (24e6, 1766e6), 6: (24e6, 1766e6)}
 
@@ -64,10 +64,10 @@ class RtlSdr:
         self._dev = ctypes.c_void_p()
         r = self._l.rtlsdr_open(ctypes.byref(self._dev), index)
         if r < 0:
-            raise RtlSdrError(f"rtlsdr_open fehlgeschlagen ({r}) – Stick belegt oder keine Rechte?")
+            raise RtlSdrError(f"rtlsdr_open failed ({r}) – stick busy or no permission?")
         self.name = (self._l.rtlsdr_get_device_name(index) or b"").decode(errors="replace")
         self.tuner_type = self._l.rtlsdr_get_tuner_type(self._dev)
-        self.tuner = TUNER_NAMES.get(self.tuner_type, "unbekannt")
+        self.tuner = TUNER_NAMES.get(self.tuner_type, "unknown")
         self.freq_range = TUNER_RANGES.get(self.tuner_type, (24e6, 1766e6))
         n = self._l.rtlsdr_get_tuner_gains(self._dev, None)
         arr = (ctypes.c_int * max(n, 1))()
@@ -83,7 +83,7 @@ class RtlSdr:
 
     def set_sample_rate(self, rate):
         if self._l.rtlsdr_set_sample_rate(self._dev, int(rate)) < 0:
-            raise RtlSdrError("Abtastrate nicht unterstützt")
+            raise RtlSdrError("sample rate not supported")
         self.sample_rate = int(rate)
 
     def set_center_freq(self, f):
@@ -94,7 +94,7 @@ class RtlSdr:
             self._l.rtlsdr_set_freq_correction(self._dev, int(ppm))
 
     def set_gain(self, gain_db):
-        """gain_db=None → Tuner-AGC, sonst nächstliegende Stufe."""
+        """gain_db=None → tuner AGC, otherwise the nearest gain step."""
         if gain_db is None or not self.gains:
             self._l.rtlsdr_set_tuner_gain_mode(self._dev, 0)
             return None
@@ -110,14 +110,14 @@ class RtlSdr:
         self._l.rtlsdr_reset_buffer(self._dev)
 
     def read_bytes(self, nbytes):
-        """Liest nbytes (Vielfaches von 512) roh als uint8-Array (I/Q verschachtelt)."""
+        """Reads nbytes (multiple of 512) raw as a uint8 array (interleaved I/Q)."""
         nbytes = (nbytes + 511) // 512 * 512
         if self._buf is None or len(self._buf) < nbytes:
             self._buf = np.empty(nbytes, dtype=np.uint8)
         n = ctypes.c_int(0)
         r = self._l.rtlsdr_read_sync(self._dev, self._buf.ctypes.data, nbytes, ctypes.byref(n))
         if r < 0:
-            raise RtlSdrError(f"Lesefehler ({r}) – Stick abgezogen?")
+            raise RtlSdrError(f"read error ({r}) – stick unplugged?")
         return self._buf[:n.value]
 
     def read_iq(self, nsamples):

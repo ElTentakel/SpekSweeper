@@ -1,17 +1,17 @@
-"""Bekannte Frequenzbereiche (Deutschland/Europa) für die Achsenbeschriftung."""
+"""Known frequency bands (Germany/Europe) for the axis labels."""
 
-# (von_Hz, bis_Hz, Kurzname, Farbe RGB 0..1)
+# (from_Hz, to_Hz, short name, colour RGB 0..1)
 BANDS = [
     (26.965e6, 27.405e6, "CB", (0.6, 0.6, 0.6)),
-    (87.5e6, 108e6, "UKW", (0.95, 0.55, 0.2)),
+    (87.5e6, 108e6, "FM", (0.95, 0.55, 0.2)),
     (108e6, 117.975e6, "VOR/ILS", (0.4, 0.7, 0.95)),
-    (118e6, 137e6, "Flugfunk", (0.35, 0.6, 1.0)),
-    (137e6, 138e6, "Wettersat", (0.5, 0.85, 0.9)),
+    (118e6, 137e6, "Airband", (0.35, 0.6, 1.0)),
+    (137e6, 138e6, "Weather sat", (0.5, 0.85, 0.9)),
     (144e6, 146e6, "2 m", (0.55, 0.9, 0.4)),
-    (156e6, 162.5e6, "Seefunk", (0.3, 0.75, 0.75)),
+    (156e6, 162.5e6, "Marine", (0.3, 0.75, 0.75)),
     (174e6, 240e6, "DAB+", (0.95, 0.4, 0.6)),
     (380e6, 400e6, "BOS-TETRA", (0.9, 0.3, 0.3)),
-    (400e6, 406e6, "Sonden", (0.75, 0.75, 0.45)),
+    (400e6, 406e6, "Sondes", (0.75, 0.75, 0.45)),
     (430e6, 440e6, "70 cm", (0.55, 0.9, 0.4)),
     (446e6, 446.2e6, "PMR", (0.85, 0.7, 0.3)),
     (470e6, 694e6, "DVB-T2", (0.7, 0.45, 0.95)),
@@ -22,15 +22,15 @@ BANDS = [
     (1452e6, 1492e6, "L-Band", (0.6, 0.6, 0.6)),
 ]
 
-# Einzelne markante Frequenzen
+# individual notable frequencies
 POINTS = [
-    (121.5e6, "Notruf Luft"),
+    (121.5e6, "Air distress"),
     (137.1e6, "NOAA"),
     (144.8e6, "APRS"),
     (145.8e6, "ISS"),
     (161.975e6, "AIS"),
     (433.92e6, "ISM 433"),
-    (868.3e6, "868,3"),
+    (868.3e6, "868.3"),
     (1090e6, "ADS-B"),
     (1575.42e6, "GPS L1"),
 ]
